@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<contentpackage name="Pickpocket Mod" modversion="1.0.0" gameversion="1.9.5.0" corepackage="false">
+  <!--
+    Lua mods don't need to be listed here explicitly - LuaForBarotrauma scans
+    this package's Lua/Autorun folder and runs every .lua file it finds once
+    the package is enabled.
+    Adjust gameversion to match your installed game version if needed.
+  -->
+</contentpackage>
