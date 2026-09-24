@@ -120,8 +120,7 @@ Networking.Receive(Pickpocket.NET.RequestOpen, function(message, client)
 
     local stock = store.Stock
     local entries = {}
-    for i = 1, stock.Count do
-        local entry = stock[i]
+    for _, entry in pairs(stock) do
         if entry.Quantity > 0 then
             table.insert(entries, entry)
         end
@@ -177,8 +176,7 @@ Networking.Receive(Pickpocket.NET.AttemptSteal, function(message, client)
 
     local stock = session.store.Stock
     local targetEntry = nil
-    for i = 1, stock.Count do
-        local entry = stock[i]
+    for _, entry in pairs(stock) do
         if entry.Quantity > 0 and tostring(entry.ItemPrefabIdentifier) == identifier then
             targetEntry = entry
             break
