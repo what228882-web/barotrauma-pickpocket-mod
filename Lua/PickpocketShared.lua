@@ -55,7 +55,11 @@ function Pickpocket.IsVendor(character)
     if not ok or interactionType == nil then
         return false
     end
-    return interactionType == CampaignMode.InteractionType.Store
+    -- Compare against the enum's string representation instead of
+    -- CampaignMode.InteractionType.Store - the CampaignMode class isn't
+    -- always reachable as a bare global table in Lua, but tostring() on
+    -- the enum value itself always works.
+    return tostring(interactionType) == "Store"
 end
 
 -- Checks whether the character is an outpost security NPC.
@@ -63,7 +67,7 @@ function Pickpocket.IsSecurityNPC(character)
     if character == nil or character.Removed or character.IsDead then
         return false
     end
-    if character.TeamID ~= CharacterTeamType.FriendlyNPC then
+    if tostring(character.TeamID) ~= "FriendlyNPC" then
         return false
     end
     if character.Info == nil or character.Info.Job == nil then

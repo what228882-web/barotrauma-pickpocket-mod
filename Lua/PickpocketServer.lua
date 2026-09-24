@@ -60,11 +60,16 @@ local function AlertSecurity(client, vendor)
     end
 
     -- Send every outpost security NPC after the thief.
+    -- Wrapped in pcall: if AIObjectiveCombat isn't reachable as a bare
+    -- global in this LuaForBarotrauma build, just skip the aggro quietly
+    -- instead of erroring (same class of issue as CampaignMode above).
     for _, character in pairs(Character.CharacterList) do
         if Pickpocket.IsSecurityNPC(character) then
             local ai = character.AIController
             if ai ~= nil and ai.AddCombatObjective ~= nil then
-                ai.AddCombatObjective(AIObjectiveCombat.CombatMode.Offensive, thief, 0)
+                pcall(function()
+                    ai.AddCombatObjective(AIObjectiveCombat.CombatMode.Offensive, thief, 0)
+                end)
             end
         end
     end
