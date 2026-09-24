@@ -17,8 +17,27 @@ if not SERVER then return end
 -- }
 local sessions = {}
 
+-- caughtVendors[client][vendorID] = true - a permanent (for the rest of the
+-- current game session) ban on stealing from a specific vendor after getting
+-- caught. Unlike sessions, this table is NOT cleared when the menu closes,
+-- the outpost changes, or on roundStart/roundEnd - only by an explicit reset.
+local caughtVendors = {}
+
 local function ResetSession(client)
     sessions[client] = nil
+end
+
+local function IsBannedFromVendor(client, vendor)
+    local banned = caughtVendors[client]
+    if banned == nil then return false end
+    return banned[vendor.ID] == true
+end
+
+local function BanFromVendor(client, vendor)
+    if caughtVendors[client] == nil then
+        caughtVendors[client] = {}
+    end
+    caughtVendors[client][vendor.ID] = true
 end
 
 -- The chance ladder resets when the menu closes or the outpost changes (see
@@ -60,19 +79,36 @@ local function AlertSecurity(client, vendor)
     end
 
     -- Send every outpost security NPC after the thief.
-    -- Wrapped in pcall: if AIObjectiveCombat isn't reachable as a bare
-    -- global in this LuaForBarotrauma build, just skip the aggro quietly
-    -- instead of erroring (same class of issue as CampaignMode above).
+    -- TEMPORARY DEBUG: print how many characters were checked, how many
+    -- matched as security, and whether AddCombatObjective itself failed -
+    -- to help diagnose guards not responding. Remove after verifying.
+    local checked, matched = 0, 0
     for _, character in pairs(Character.CharacterList) do
+        checked = checked + 1
+        -- Extra diagnostics: show TeamID and job for every friendly NPC even
+        -- if IsSecurityNPC didn't match it - to verify the string comparisons
+        -- for TeamID/job are actually correct.
+        if not character.Removed and not character.IsDead and tostring(character.TeamID) == "FriendlyNPC" then
+            local jobId = "?"
+            if character.Info ~= nil and character.Info.Job ~= nil then
+                jobId = tostring(character.Info.Job.Prefab.Identifier)
+            end
+            print("[Pickpocket DEBUG] FriendlyNPC seen: " .. tostring(character.Name) .. " job='" .. jobId .. "'")
+        end
         if Pickpocket.IsSecurityNPC(character) then
+            matched = matched + 1
             local ai = character.AIController
             if ai ~= nil and ai.AddCombatObjective ~= nil then
-                pcall(function()
+                local ok, err = pcall(function()
                     ai.AddCombatObjective(AIObjectiveCombat.CombatMode.Offensive, thief, 0)
                 end)
+                print("[Pickpocket DEBUG] AddCombatObjective on " .. tostring(character.Name) .. " -> ok=" .. tostring(ok) .. (ok and "" or (" err=" .. tostring(err))))
+            else
+                print("[Pickpocket DEBUG] " .. tostring(character.Name) .. " matched as security but has no AIController/AddCombatObjective")
             end
         end
     end
+    print("[Pickpocket DEBUG] AlertSecurity: checked " .. checked .. " characters, " .. matched .. " matched as security (job ids: " .. table.concat(Pickpocket.SECURITY_JOB_IDS, ", ") .. ")")
 end
 
 -- caught = true when the session is closing because a steal attempt failed
@@ -84,6 +120,7 @@ local function CloseSession(client, caught)
 
     if caught then
         ClearStolenItems(client)
+        BanFromVendor(client, vendor)
         SendToClient(Pickpocket.NET.Caught, client, nil)
         AlertSecurity(client, vendor)
     end
@@ -106,6 +143,11 @@ Networking.Receive(Pickpocket.NET.RequestOpen, function(message, client)
         return
     end
 
+    if IsBannedFromVendor(client, vendor) then
+        SendToClient(Pickpocket.NET.Banned, client, nil)
+        return
+    end
+
     local store = Pickpocket.GetStoreForVendor(vendor)
     if store == nil then return end
 
@@ -117,6 +159,7 @@ Networking.Receive(Pickpocket.NET.RequestOpen, function(message, client)
         stolen = {},
         attempts = 0,
     }
+    local session = sessions[client]
 
     local stock = store.Stock
     local entries = {}
@@ -127,6 +170,7 @@ Networking.Receive(Pickpocket.NET.RequestOpen, function(message, client)
     end
 
     SendToClient(Pickpocket.NET.StoreData, client, function(msg)
+        msg.WriteInt32(Pickpocket.GetChance(session.attempts + 1))
         msg.WriteUInt16(#entries)
         for _, entry in ipairs(entries) do
             msg.WriteString(tostring(entry.ItemPrefabIdentifier))
@@ -189,6 +233,7 @@ Networking.Receive(Pickpocket.NET.AttemptSteal, function(message, client)
             msg.WriteBoolean(false)
             msg.WriteString(identifier)
             msg.WriteBoolean(false) -- caught = false, just "no longer available"
+            msg.WriteInt32(Pickpocket.GetChance(session.attempts + 1))
         end)
         return
     end
@@ -212,19 +257,22 @@ Networking.Receive(Pickpocket.NET.AttemptSteal, function(message, client)
             msg.WriteBoolean(true)
             msg.WriteString(identifier)
             msg.WriteBoolean(false)
+            msg.WriteInt32(Pickpocket.GetChance(session.attempts + 1))
         end)
     else
         SendToClient(Pickpocket.NET.StealResult, client, function(msg)
             msg.WriteBoolean(false)
             msg.WriteString(identifier)
             msg.WriteBoolean(true) -- caught = true
+            msg.WriteInt32(Pickpocket.GetChance(session.attempts + 1))
         end)
 
         CloseSession(client, true)
     end
 end)
 
--- Outpost change (new leg of the journey / new round) - drop every active session.
+-- Outpost change (new leg of the journey / new round) - drop active sessions.
+-- Per-vendor bans (caughtVendors) are NOT reset here - they're permanent.
 Hook.Add("roundStart", "Pickpocket.RoundStart", function()
     sessions = {}
 end)

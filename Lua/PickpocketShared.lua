@@ -14,6 +14,7 @@ Pickpocket.NET = {
     AttemptSteal = "Pickpocket_AttemptSteal", -- client -> server: attempt to steal one item
     StealResult  = "Pickpocket_StealResult",  -- server -> client: result of a steal attempt
     Caught       = "Pickpocket_Caught",       -- server -> client: player got caught, force-close menu
+    Banned       = "Pickpocket_Banned",       -- server -> client: no longer allowed to steal from this vendor (already got caught)
 }
 
 -- Success chance for the 1st, 2nd, ... attempt within a single session (percent).
